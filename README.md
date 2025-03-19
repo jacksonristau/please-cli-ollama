@@ -4,9 +4,8 @@ This is a fork of the original [please-cli](https://github.com/TNG/please-cli/) 
 - Replaced openai related structure with ollama specific implementation
 - Removed any support for openai requests including getting rid of openai api keys
 - fixed a ui bug possibly caused by my changes
-- 
 
-An [AI helper script to create CLI commands](https://github.com/TNG/please-cli/).
+The original copyright and NOTICE file are retained in this repository.
 
 ## Usage
 
@@ -14,7 +13,7 @@ An [AI helper script to create CLI commands](https://github.com/TNG/please-cli/)
 please <command description>
 ```
 
-This will call GPT to generate a Linux command based on your input.
+This will call a local model through ollama to generate a Linux command based on your input.
 
 ### Examples
 
