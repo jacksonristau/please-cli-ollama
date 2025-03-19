@@ -2,10 +2,11 @@
 
 set -uo pipefail
 
-model=${PLEASE_OPENAI_CHAT_MODEL:-'gpt-4-turbo'}
+model=${PLEASE_CHAT_MODEL:-'llama3.2'}
+ollama_url=${OLLAMA_URL:-'http://localhost:11434'}
+
 options=("[I] Invoke" "[C] Copy to clipboard" "[Q] Ask a question" "[A] Abort" )
 number_of_options=${#options[@]}
-keyName="OPENAI_API_KEY"
 
 explain=0
 debug_flag=0
@@ -22,10 +23,6 @@ exclamation="\xE2\x9D\x97"
 questionMark="\x1B[31m?\x1B[0m"
 checkMark="\x1B[31m\xE2\x9C\x93\x1B[0m"
 
-openai_api_base=${PLEASE_OPENAI_API_BASE:-${OPENAI_API_BASE:-${OPENAI_URL:-"https://api.openai.com"}}}
-openai_api_version=${PLEASE_OPENAI_API_VERSION:-${OPENAI_API_VERSION:-"v1"}}
-openai_invocation_url=${openai_api_base}/${openai_api_version}
-
 fail_msg="echo 'I do not know. Please rephrase your question.'"
 
 declare -a qaMessages=()
@@ -37,20 +34,12 @@ check_args() {
         explain=1
         shift
         ;;
-      -l|--legacy)
-        model="gpt-3.5-turbo"
-        shift
-        ;;
       --debug)
         debug_flag=1
         shift
         ;;
-      -a|--api-key)
-        store_api_key
-        exit 0
-        ;;
       -m|--model)
-        if [ -n "$2" ] && [ "${2:0:1}" != "-" ] && [ "${2:0:3}" == "gpt" ]; then
+        if [ -n "$2" ] && [ "${2:0:1}" != "-" ]; then
           model="$2"
           shift 2
         else
@@ -76,42 +65,6 @@ check_args() {
   commandDescription="$*"
 }
 
-function store_api_key() {
-    echo "Do you want the script to store an API key in the local keychain? (y/n)"
-    read -r answer
-
-    if [ "$answer" != "y" ]; then
-        echo "This script will need an API Key to run. Exiting..."
-        exit 1
-    fi
-
-    echo "The script needs to create or copy the API key. Press Enter to continue..."
-    read -rs
-
-    apiKeyUrl="https://platform.openai.com/account/api-keys"
-    echo "Opening ${apiKeyUrl} in your browser..."
-    open "${apiKeyUrl}" || xdg-open "${apiKeyUrl}"
-
-    while true; do
-        echo "Please enter your API key: [Press Ctrl+C to exit]"
-        read -rs apiKey
-
-        if [ -z "$apiKey" ]; then
-            echo "API key cannot be empty. Please try again."
-        else
-            if [[ "$OSTYPE" == "darwin"* ]]; then
-                security add-generic-password -a "${USER}" -s "${keyName}" -w "${apiKey}" -U
-                PLEASE_OPENAI_API_KEY=$(security find-generic-password -a "${USER}" -s "${keyName}" -w)
-            else
-                echo -e "${apiKey}" | secret-tool store --label="${keyName}" username "${USER}" key_name "${keyName}"
-                PLEASE_OPENAI_API_KEY=$(secret-tool lookup username "${USER}" key_name "${keyName}")
-            fi
-            echo "API key stored successfully and set as a global variable."
-            break
-        fi
-    done
-}
-
 display_version() {
   echo "Please vVERSION_NUMBER"
 }
@@ -122,9 +75,7 @@ display_help() {
   echo
   echo "Options:"
   echo "  -e, --explanation    Explain the command to the user"
-  echo "  -l, --legacy         Use GPT 3.5 (in case you do not have GPT4 API access)"
   echo "      --debug          Show debugging output"
-  echo "  -a, --api-key        Store your API key in the local keychain"
   echo "  -m, --model          Specify the exact LLM model for the script"
   echo "  -v, --version        Display version information and exit"
   echo "  -h, --help           Display this help message and exit"
@@ -132,8 +83,6 @@ display_help() {
   echo "Input:"
   echo "  The remaining arguments are used as input to be turned into a CLI command."
   echo
-  echo "OpenAI API Key:"
-  echo "  The API key needs to be set as PLEASE_OPENAI_API_KEY or OPENAI_API_KEY environment variable or keychain entry. "
 }
 
 
@@ -143,62 +92,20 @@ debug() {
     fi
 }
 
-check_key() {
-  if [ -z "${PLEASE_OPENAI_API_KEY:-${OPENAI_API_KEY:-}}" ]; then
-    debug "PLEASE_OPENAI_API_KEY or OPENAI_API_KEY environment variable not set, trying to find it in keychain"
-    get_key_from_keychain
-  fi
-}
-
-
-get_key_from_keychain() {
-  case "$(uname)" in
-    Darwin*) # macOS
-      key=$(security find-generic-password -a "${USER}" -s "${keyName}" -w)
-      exitStatus=$?
-      ;;
-    Linux*)
-      if ! command -v secret-tool &> /dev/null; then
-        debug "PLEASE_OPENAI_API_KEY or OPENAI_API_KEY not set and secret-tool not installed. Install it with 'sudo apt install libsecret-tools'."
-        exitStatus=1
-      else
-        key=$(secret-tool lookup username "${USER}" key_name "${keyName}")
-        exitStatus=$?
-      fi
-      ;;
-    *)
-      debug "PLEASE_OPENAI_API_KEY or OPENAI_API_KEY not set and no supported keychain available."
-      exitStatus=1
-      ;;
-  esac
-
-  if [ "${exitStatus}" -ne 0 ]; then
-    echo "PLEASE_OPENAI_API_KEY or OPENAI_API_KEY not set and unable to find it in keychain. See the README on how to persist your key."
-    echo "You can get an API at https://beta.openai.com/"
-    echo "Please enter your OpenAI API key now to use it this time only, or rerun 'please -a' to store it in the keychain."
-    echo "Your API Key:"
-    read -r key
-  fi
-
-  if [ -z "${key}" ]; then
-    echo "No API key provided. Exiting."
-    exit 1
-  fi
-  PLEASE_OPENAI_API_KEY="${key}"
-}
-
+# this is where the http request is built 
 get_command() {
   role="You translate the given input into a Linux command. You may not use natural language, but only a Linux shell command as an answer.
   Do not use markdown. Do not quote the whole output. If you do not know the answer, answer with \\\"${fail_msg}\\\"."
 
   payload=$(printf %s "$commandDescription" | jq --slurp --raw-input --compact-output '{
     model: "'"$model"'",
-    messages: [{ role: "system", content: "'"$role"'" }, { role: "user", content: . }]
+    messages: [{ role: "system", content: "'"$role"'" }, { role: "user", content: . }],
+    stream: false
   }')
 
-  debug "Sending request to OpenAI API: ${payload}"
+  debug "Sending request to Ollama API: ${payload}"
 
-  perform_openai_request
+  perform_ollama_request
   command="${message}"
 }
 
@@ -211,21 +118,21 @@ explain_command() {
     payload=$(printf %s "$prompt" | jq --slurp --raw-input --compact-output '{
       max_tokens: 100,
       model: "'"$model"'",
-      messages: [{ role: "user", content: . }]
+      messages: [{ role: "user", content: . }],
+      stream: false
     }')
 
-    perform_openai_request
+    perform_ollama_request
     explanation="${message}"
   fi
 }
 
-perform_openai_request() {
-  completions_url="${openai_invocation_url}/chat/completions"
+perform_ollama_request() {
+  completions_url="${ollama_url}/api/chat"
   IFS=$'\n' read -r -d '' -a result < <(curl "${completions_url}" \
        -s -w "\n%{http_code}" \
        -H "Content-Type: application/json" \
        -H "Accept-Encoding: identity" \
-       -H "Authorization: Bearer ${PLEASE_OPENAI_API_KEY:-$OPENAI_API_KEY}" \
        -d "${payload}" \
        --silent)
   debug "Response:\n${result[*]}"
@@ -241,7 +148,7 @@ perform_openai_request() {
     echo "${response}"
     exit 1
   else
-    message=$(echo "${response}" | jq '.choices[0].message.content' --raw-output)
+    message=$(echo "${response}" | jq '.message.content' --raw-output)
   fi
 }
 
@@ -317,7 +224,8 @@ choose_action() {
 display_menu() {
   if [ $initialized -eq 1 ]; then
     # Go up 1 line
-    printf "\033[%dA" "1"
+    printf "\033[1A" "1"
+    printf "\033[2K"
   else
     initialized=1
   fi
@@ -445,7 +353,7 @@ answer_question_about_command() {
     messages: $messagesJson
   }')
 
-  perform_openai_request
+  perform_ollama_request
 
   answer="${message}"
   escapedAnswer=$(printf %s "$answer" | jq -srR '@json')
@@ -467,7 +375,6 @@ function main() {
   fi
 
   check_args "${input[@]}"
-  check_key
 
   get_command
   if [ "${explain}" -eq 1 ]; then
