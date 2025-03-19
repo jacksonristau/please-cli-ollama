@@ -1,4 +1,10 @@
-# Please CLI by TNG Technology Consulting
+# Please CLI (Ollama Fork)
+
+This is a fork of the original [please-cli](https://github.com/TNG/please-cli/) project with the following changes:
+- Replaced openai related structure with ollama specific implementation
+- Removed any support for openai requests including getting rid of openai api keys
+- fixed a ui bug possibly caused by my changes
+- 
 
 An [AI helper script to create CLI commands](https://github.com/TNG/please-cli/).
 
@@ -35,69 +41,13 @@ You may then:
 
 ### Parameters
 - `-e` or `--explanation` will explain the command for you
-- `-l` or `--legacy` will use the GPT3.5 AI model instead of GPT4 (in case you don't have API access to GPT4)
 - `--debug` will display additional output
-- `-a` or `--api-key` will store your API key in the local keychain
-- `-m` or `--model` will query ChatGPT with the specified model
+- `-m` or `--model` will query local ollama server with the specified model
 - `-v` or `--version` will show the current version
 - `-h` or `--help` will show the help message
 ```
 
 ## Installation
-
-### brew
-
-Using Homebrew (ugrades will be available via `brew upgrade please`)
-
-```
-brew tap TNG/please
-brew install please
-```
-
-### apt
-
-Using apt (upgrades will be available via `apt upgrade please`)
-
-```bash
-curl -sS https://tng.github.io/apt-please/public_key.gpg | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/please.gpg > /dev/null
-echo "deb https://tng.github.io/apt-please/ ./" | sudo tee -a /etc/apt/sources.list
-sudo apt-get update
-
-sudo apt-get install please
-```
-
-### nix
-
-```bash
-git clone https://github.com/TNG/please-cli.git
-cd please-cli
-nix-env -i -f .
-```
-
-Using Nix Flakes
-
-```bash
-nix run github:TNG/please-cli
-```
-
-### dpkg
-
-Manual upgrades
-
-```bash
-wget https://tng.github.io/apt-please/please.deb
-sudo dpkg -i please.deb
-sudo apt-get install -f
-```
-
-### arch
-The latest release is in the AUR under the name [please-cli](https://aur.archlinux.org/packages/please-cli). It can be installed [manually](https://wiki.archlinux.org/title/Arch_User_Repository) or with [a helper](https://wiki.archlinux.org/title/AUR_helpers).
-
-Alternatively, you can build the package from source via
-```bash
-wget https://raw.githubusercontent.com/TNG/please-cli/main/PKGBUILD
-makepkg --clean --install --syncdeps
-```
 
 ### Manually from source
 
@@ -113,51 +63,13 @@ sudo chmod +x /usr/local/bin/please
 
 ## Prerequisites
 
-You need an OpenAI API key. You can get one here: https://beta.openai.com/. Once logged in, click your account in the top right corner and select "View API Keys". You can then create a new key using the "Create new secret key" button.
-
-The API key needs to be set:
-
-- either via an environment variable `OPENAI_API_KEY`,
-- or via a keychain entry `OPENAI_API_KEY` (macOS keychain and secret-tool on Linux are supported)
-
-The easiest way to set the API Key is to use the `please` command itself to do so:
-
-```bash
-please -a
-```
-
-This will set the API key in the keychain of your operating system (secret-tool on Linux, macOS keychain on MacOS).
-
-You can also set the API key via an environment variable, run
-
-```bash
-export OPENAI_API_KEY=<YOUR_API_KEY>
-```
-
-To store your API key yourself using secret-tool, run
-
-```bash
-secret-tool store --label="OPENAI_API_KEY" username "${USER}" key_name OPENAI_API_KEY apiKey "${apiKey}"
-```
-
-To store your API key using macOS keychain, run
-
-```bash
-security add-generic-password -a "${USER}" -s OPENAI_API_KEY -w "${apiKey}"
-```
+You need an Ollama server running on your local machine, but you can obviously change the ollama_url to 
 
 ## Configuration
 
-You can use the following OpenAI compatible environment variables:
-* `OPENAI_API_KEY` - Your OpenAI API key
-* `OPENAI_API_BASE` - The base URL for the OpenAI API
-* `OPENAI_API_VERSION` - The version of the OpenAI API
-
 You can use the more specific environment variables if you do not want to change OpenAI settings globally:
-* `PLEASE_OPENAI_API_KEY` - Your OpenAI API key
-* `PLEASE_OPENAI_API_BASE` - The base URL for the OpenAI API
-* `PLEASE_OPENAI_API_VERSION` - The version of the OpenAI API
-* `PLEASE_OPENAI_CHAT_MODEL` - The chat model to use
+* `PLEASE_CHAT_MODEL` - The local chat model to use
+* `OLLAMA_URL` - The server to send /api/chat the requests to
 
 ## Troubleshooting
 
@@ -167,17 +79,13 @@ If you receive the following error message:
 Error: Received HTTP status 404
 ```
 
-There probably is an issue with your base URL. Please check the OpenAI API base URL in your environment variables.
+There probably is an issue with your base URL. Please check the Ollama Url in your environment variables.
 
+## Choosing a model
 
-```bash
-Error: Received HTTP status 401
-```
-
-There probably is an issue with your OpenAI API key. Please check the OpenAI API key in your environment variables.
+I found that the llama3.2 (3b) parameter works fairly quick with my older gpu and gives good results. 
+I initially tried with deepseek-r1:7b but the reasoning takes too long and would be annoying to parse.
 
 ## License
 
 Please CLI is published under the Apache License 2.0, see http://www.apache.org/licenses/LICENSE-2.0 for details.
-
-Copyright 2025 TNG Technology Consulting GmbH
